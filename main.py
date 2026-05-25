@@ -1,12 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import google.generativeai as genai
+import requests
 import os
 
 app = FastAPI()
 
-# السماح للجميع بالاتصال
+# السماح للموقع بالاتصال بالسيرفر
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,12 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# جلب المفتاح
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-genai.configure(api_key=GEMINI_API_KEY)
-
-# تم تغيير اسم النموذج هنا إلى gemini-pro لضمان التوافق التام
-model = genai.GenerativeModel(model_name="gemini-pro")
 
 class MessageRequest(BaseModel):
     message: str
@@ -36,12 +31,23 @@ async def chat_with_ai(req: MessageRequest):
         User message: {req.message}
         """
         
-        response = model.generate_content(full_prompt)
-        return {"reply": response.text}
+        # الاتصال المباشر بسيرفرات جوجل (أضمن طريقة)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
         
+        response = requests.post(url, json=payload)
+        data = response.json()
+        
+        if response.status_code == 200:
+            reply = data["candidates"][0]["content"]["parts"][0]["text"]
+            return {"reply": reply}
+        else:
+            err_msg = data.get("error", {}).get("message", "Unknown API error")
+            return {"reply": f"API Error: {err_msg}"}
+            
     except Exception as e:
-        return {"reply": f"Google API Error: {str(e)}"}
+        return {"reply": f"System Error: {str(e)}"}
 
 @app.get("/")
 def read_root():
-    return {"status": "Laith AI Backend is running smoothly."}
+    return {"status": "Backend is running!"}
